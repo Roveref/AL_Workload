@@ -141,7 +141,7 @@ const ChargeDisplay = () => {
 
       // Important: The first two rows are headers, so we need to start processing from row 3
       // This means we need to adjust our index from i=3 (which we had before) to i=2 (0-based index for the 3rd row)
-      const HEADER_ROWS = 2; // Number of header rows to skip
+      const HEADER_ROWS = 1; // Number of header rows to skip
       const DATA_START_ROW = HEADER_ROWS; // Data starts right after the header rows (0-based index)
 
       // Identifier les Work Packages et rôles
