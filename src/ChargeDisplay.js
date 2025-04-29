@@ -18,7 +18,7 @@ import {
   ComposedChart,
 } from "recharts";
 import * as XLSX from "xlsx";
-import _ from "lodash";
+// Removed lodash import
 
 const COLORS = [
   "#0088FE",
@@ -51,6 +51,17 @@ const COLORS_MONTHS = [
   "#8a2be2",
 ];
 
+// Helper function to replace lodash orderBy
+const orderBy = (array, key, order) => {
+  return [...array].sort((a, b) => {
+    if (order[0] === "desc") {
+      return b[key] - a[key];
+    } else {
+      return a[key] - b[key];
+    }
+  });
+};
+
 const ChargeDisplay = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [workPackageData, setWorkPackageData] = useState([]);
@@ -63,200 +74,276 @@ const ChargeDisplay = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const [activeWP, setActiveWP] = useState("WP1");
   const [mainWPs, setMainWPs] = useState([]);
+  const [fileError, setFileError] = useState(null);
+  const [fileInput, setFileInput] = useState(null);
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setIsLoading(true);
-        const response = await window.fs.readFile("AL_Charge.xlsx");
-        const workbook = XLSX.read(response, {
-          cellStyles: true,
-          cellFormulas: true,
-          cellDates: true,
-          cellNF: true,
-          sheetStubs: true,
-        });
+  const handleFileUpload = async (event) => {
+    try {
+      setIsLoading(true);
+      setFileError(null);
 
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const data = XLSX.utils.sheet_to_json(sheet, {
-          header: 1,
-          defval: null,
-        });
+      const file = event.target.files[0];
+      if (!file) {
+        setFileError("Aucun fichier sélectionné");
+        setIsLoading(false);
+        return;
+      }
 
-        // Identifier les Work Packages et rôles
-        const allWorkPackages = [
-          "1.1 Program Charter",
-          "1.2 Standardized Templates",
-          "1.3 Communication and Training Material",
-          "2.1 Integrated Program Roadmap",
-          "2.2 Work Breakdown Structure",
-          "2.3 Critical Path Analysis",
-          "2.4 Planning Progress Reports",
-          "3.1 Interface Management Framework",
-          "3.2 RACI Matrix",
-          "3.3 Dependency Map",
-          "4.1 Governance Model",
-          "4.2 Risk Register",
-          "4.3 Updated Risk Review Committees",
-          "4.4 Decision Logs and Action Tracker",
-          "4.5 KPI and OKR Dashboard",
-          "4.6 Governance Assessment Reports",
-          "5.1 Document Management Strategy",
-          "5.2 Quality Assurance Plan",
-          "5.3 Documentation Templates",
-          "5.4 Deliverables Review Checklist",
-          "5.5 Compliance and Audit Reports",
-          "6.1 Benefits Realization Plan",
-          "6.2 Financial Tracking Reports",
-          "6.3 Non-Financial KPI Dashboards",
-          "6.4 Cost-Benefit Analysis Reports",
-          "6.5 Benefits Realization Review",
-          "7.1 Workshop Agendas and Objectives",
-          "7.2 Facilitation Materials",
-          "7.3 Workshop Summary Reports",
-          "7.4 Pulse Survey Analysis",
-          "8.1 Executive Briefing Packs",
-          "8.2 Strategic Decision Support Reports",
-          "8.3 Risk Resolution Summaries",
-          "8.4 Ad-Hoc Executive Reports",
-        ];
+      setFileInput(file);
+      const reader = new FileReader();
 
-        // Lignes de synthèse (à ne pas inclure dans les calculs)
-        const summaryWPs = [
-          "WP1",
-          "WP2",
-          "WP3",
-          "WP4",
-          "WP5",
-          "WP6",
-          "WP7",
-          "WP8",
-        ];
-        setMainWPs(summaryWPs);
-
-        // Pour l'affichage de la hiérarchie, nous avons besoin des deux
-        const workPackages = [...summaryWPs, ...allWorkPackages];
-
-        const roles = [
-          "PMO Lead",
-          "Partners",
-          "Program Deputy",
-          "Core Team 2 Change",
-          "Core Team 2 Process",
-          "SAP Expert",
-          "Aveva Expert",
-          "PPM Expert",
-          "SA Expert",
-          "Digital Consistency Expert",
-          "Change Expert",
-        ];
-
-        // Mois disponibles
-        const months = [
-          { month: "Jun", column: 42 },
-          { month: "Jul", column: 47 },
-          { month: "Aug", column: 52 },
-          { month: "Sep", column: 57 },
-          { month: "Oct", column: 62 },
-          { month: "Nov", column: 67 },
-          { month: "Dec", column: 72 },
-          { month: "Jan", column: 77 },
-          { month: "Feb", column: 82 },
-          { month: "Mar", column: 87 },
-          { month: "Apr", column: 92 },
-          { month: "May", column: 97 },
-        ];
-
-        // 1. Calculer la charge totale par WP (uniquement les sous-WPs, pas les WPs de synthèse)
-        let wpData = [];
-
-        // D'abord calculer les sous-WPs
-        for (let wp of allWorkPackages) {
-          let setup = 0;
-          let monitor = 0;
-          let run = 0;
-
-          for (let i = 3; i < data.length; i++) {
-            if (data[i] && data[i][0] === wp) {
-              if (data[i][2]) setup += data[i][2];
-              if (data[i][3]) monitor += data[i][3];
-              if (data[i][4]) run += data[i][4];
-            }
-          }
-
-          wpData.push({
-            workPackage: wp,
-            setup: parseFloat(setup.toFixed(2)),
-            monitor: parseFloat(monitor.toFixed(2)),
-            run: parseFloat(run.toFixed(2)),
-            total: parseFloat((setup + monitor + run).toFixed(2)),
-          });
-        }
-
-        // Ensuite calculer les totaux pour les WPs de synthèse
-        for (let mainWP of summaryWPs) {
-          const wpNumber = mainWP.replace("WP", "");
-          const subWPs = allWorkPackages.filter((wp) =>
-            wp.startsWith(wpNumber + ".")
+      reader.onload = async (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          processExcelData(data);
+        } catch (error) {
+          console.error("Erreur lors du traitement du fichier:", error);
+          setFileError(
+            `Erreur lors du traitement du fichier: ${error.message}`
           );
+          setIsLoading(false);
+        }
+      };
 
-          let setup = 0;
-          let monitor = 0;
-          let run = 0;
+      reader.onerror = () => {
+        setFileError("Erreur lors de la lecture du fichier");
+        setIsLoading(false);
+      };
 
-          subWPs.forEach((subWP) => {
-            const subWPData = wpData.find((data) => data.workPackage === subWP);
-            if (subWPData) {
-              setup += subWPData.setup;
-              monitor += subWPData.monitor;
-              run += subWPData.run;
-            }
-          });
+      reader.readAsArrayBuffer(file);
+    } catch (error) {
+      console.error("Erreur lors du téléchargement du fichier:", error);
+      setFileError(
+        `Erreur lors du téléchargement du fichier: ${error.message}`
+      );
+      setIsLoading(false);
+    }
+  };
 
-          wpData.push({
-            workPackage: mainWP,
-            setup: parseFloat(setup.toFixed(2)),
-            monitor: parseFloat(monitor.toFixed(2)),
-            run: parseFloat(run.toFixed(2)),
-            total: parseFloat((setup + monitor + run).toFixed(2)),
-          });
+  const processExcelData = (response) => {
+    try {
+      const workbook = XLSX.read(response, {
+        cellStyles: true,
+        cellFormulas: true,
+        cellDates: true,
+        cellNF: true,
+        sheetStubs: true,
+      });
+
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const data = XLSX.utils.sheet_to_json(sheet, {
+        header: 1,
+        defval: null,
+      });
+
+      // Identifier les Work Packages et rôles
+      const allWorkPackages = [
+        "1.1 Program Charter",
+        "1.2 Standardized Templates",
+        "1.3 Communication and Training Material",
+        "2.1 Integrated Program Roadmap",
+        "2.2 Work Breakdown Structure",
+        "2.3 Critical Path Analysis",
+        "2.4 Planning Progress Reports",
+        "3.1 Interface Management Framework",
+        "3.2 RACI Matrix",
+        "3.3 Dependency Map",
+        "4.1 Governance Model",
+        "4.2 Risk Register",
+        "4.3 Updated Risk Review Committees",
+        "4.4 Decision Logs and Action Tracker",
+        "4.5 KPI and OKR Dashboard",
+        "4.6 Governance Assessment Reports",
+        "5.1 Document Management Strategy",
+        "5.2 Quality Assurance Plan",
+        "5.3 Documentation Templates",
+        "5.4 Deliverables Review Checklist",
+        "5.5 Compliance and Audit Reports",
+        "6.1 Benefits Realization Plan",
+        "6.2 Financial Tracking Reports",
+        "6.3 Non-Financial KPI Dashboards",
+        "6.4 Cost-Benefit Analysis Reports",
+        "6.5 Benefits Realization Review",
+        "7.1 Workshop Agendas and Objectives",
+        "7.2 Facilitation Materials",
+        "7.3 Workshop Summary Reports",
+        "7.4 Pulse Survey Analysis",
+        "8.1 Executive Briefing Packs",
+        "8.2 Strategic Decision Support Reports",
+        "8.3 Risk Resolution Summaries",
+        "8.4 Ad-Hoc Executive Reports",
+      ];
+
+      // Lignes de synthèse (à ne pas inclure dans les calculs)
+      const summaryWPs = [
+        "WP1",
+        "WP2",
+        "WP3",
+        "WP4",
+        "WP5",
+        "WP6",
+        "WP7",
+        "WP8",
+      ];
+      setMainWPs(summaryWPs);
+
+      // Pour l'affichage de la hiérarchie, nous avons besoin des deux
+      const workPackages = [...summaryWPs, ...allWorkPackages];
+
+      const roles = [
+        "PMO Lead",
+        "Partners",
+        "Program Deputy",
+        "Core Team 2 Change",
+        "Core Team 2 Process",
+        "SAP Expert",
+        "Aveva Expert",
+        "PPM Expert",
+        "SA Expert",
+        "Digital Consistency Expert",
+        "Change Expert",
+      ];
+
+      // Mois disponibles
+      const months = [
+        { month: "Jun", column: 42 },
+        { month: "Jul", column: 47 },
+        { month: "Aug", column: 52 },
+        { month: "Sep", column: 57 },
+        { month: "Oct", column: 62 },
+        { month: "Nov", column: 67 },
+        { month: "Dec", column: 72 },
+        { month: "Jan", column: 77 },
+        { month: "Feb", column: 82 },
+        { month: "Mar", column: 87 },
+        { month: "Apr", column: 92 },
+        { month: "May", column: 97 },
+      ];
+
+      // 1. Calculer la charge totale par WP (uniquement les sous-WPs, pas les WPs de synthèse)
+      let wpData = [];
+
+      // D'abord calculer les sous-WPs
+      for (let wp of allWorkPackages) {
+        let setup = 0;
+        let monitor = 0;
+        let run = 0;
+
+        for (let i = 3; i < data.length; i++) {
+          if (data[i] && data[i][0] === wp) {
+            if (data[i][2]) setup += data[i][2];
+            if (data[i][3]) monitor += data[i][3];
+            if (data[i][4]) run += data[i][4];
+          }
         }
 
-        setWorkPackageData(wpData);
+        wpData.push({
+          workPackage: wp,
+          setup: parseFloat(setup.toFixed(2)),
+          monitor: parseFloat(monitor.toFixed(2)),
+          run: parseFloat(run.toFixed(2)),
+          total: parseFloat((setup + monitor + run).toFixed(2)),
+        });
+      }
 
-        // 2. Calculer la charge totale par rôle
-        let roleDataCalc = [];
-        for (let role of roles) {
-          let setup = 0;
-          let monitor = 0;
-          let run = 0;
+      // Ensuite calculer les totaux pour les WPs de synthèse
+      for (let mainWP of summaryWPs) {
+        const wpNumber = mainWP.replace("WP", "");
+        const subWPs = allWorkPackages.filter((wp) =>
+          wp.startsWith(wpNumber + ".")
+        );
+
+        let setup = 0;
+        let monitor = 0;
+        let run = 0;
+
+        subWPs.forEach((subWP) => {
+          const subWPData = wpData.find((data) => data.workPackage === subWP);
+          if (subWPData) {
+            setup += subWPData.setup;
+            monitor += subWPData.monitor;
+            run += subWPData.run;
+          }
+        });
+
+        wpData.push({
+          workPackage: mainWP,
+          setup: parseFloat(setup.toFixed(2)),
+          monitor: parseFloat(monitor.toFixed(2)),
+          run: parseFloat(run.toFixed(2)),
+          total: parseFloat((setup + monitor + run).toFixed(2)),
+        });
+      }
+
+      setWorkPackageData(wpData);
+
+      // 2. Calculer la charge totale par rôle
+      let roleDataCalc = [];
+      for (let role of roles) {
+        let setup = 0;
+        let monitor = 0;
+        let run = 0;
+
+        for (let i = 3; i < data.length; i++) {
+          // Exclure les lignes de synthèse
+          if (
+            data[i] &&
+            data[i][1] === role &&
+            !summaryWPs.includes(data[i][0])
+          ) {
+            if (data[i][2]) setup += data[i][2];
+            if (data[i][3]) monitor += data[i][3];
+            if (data[i][4]) run += data[i][4];
+          }
+        }
+
+        roleDataCalc.push({
+          role: role,
+          setup: parseFloat(setup.toFixed(2)),
+          monitor: parseFloat(monitor.toFixed(2)),
+          run: parseFloat(run.toFixed(2)),
+          total: parseFloat((setup + monitor + run).toFixed(2)),
+        });
+      }
+      setRoleData(roleDataCalc);
+
+      // 3. Distribution des charges mensuelles - en utilisant uniquement les données des sous-WPs
+      let monthlyDataCalc = [];
+      for (let monthObj of months) {
+        let total = 0;
+
+        // Pour chaque mois, utiliser les 4 semaines correspondantes
+        for (let weekOffset = 0; weekOffset < 4; weekOffset++) {
+          const weekIndex = monthObj.column + weekOffset;
 
           for (let i = 3; i < data.length; i++) {
-            // Exclure les lignes de synthèse
+            // Ne prendre en compte que les lignes qui ne sont pas des WPs de synthèse
             if (
               data[i] &&
-              data[i][1] === role &&
-              !summaryWPs.includes(data[i][0])
+              !summaryWPs.includes(data[i][0]) &&
+              data[i][weekIndex] !== null &&
+              data[i][weekIndex] !== undefined
             ) {
-              if (data[i][2]) setup += data[i][2];
-              if (data[i][3]) monitor += data[i][3];
-              if (data[i][4]) run += data[i][4];
+              total += data[i][weekIndex];
             }
           }
-
-          roleDataCalc.push({
-            role: role,
-            setup: parseFloat(setup.toFixed(2)),
-            monitor: parseFloat(monitor.toFixed(2)),
-            run: parseFloat(run.toFixed(2)),
-            total: parseFloat((setup + monitor + run).toFixed(2)),
-          });
         }
-        setRoleData(roleDataCalc);
 
-        // 3. Distribution des charges mensuelles - en utilisant uniquement les données des sous-WPs
-        let monthlyDataCalc = [];
+        monthlyDataCalc.push({
+          month: monthObj.month,
+          total: parseFloat(total.toFixed(2)),
+        });
+      }
+      setMonthlyData(monthlyDataCalc);
+
+      // 4. Distribution des charges par Work Package et par mois - excluant les WPs de synthèse dans les calculs
+      let wpMonthlyDataCalc = [];
+
+      // D'abord calculer pour les sous-WPs
+      for (let wp of allWorkPackages) {
+        let wpRow = { workPackage: wp };
+
         for (let monthObj of months) {
           let total = 0;
 
@@ -265,10 +352,9 @@ const ChargeDisplay = () => {
             const weekIndex = monthObj.column + weekOffset;
 
             for (let i = 3; i < data.length; i++) {
-              // Ne prendre en compte que les lignes qui ne sont pas des WPs de synthèse
               if (
                 data[i] &&
-                !summaryWPs.includes(data[i][0]) &&
+                data[i][0] === wp &&
                 data[i][weekIndex] !== null &&
                 data[i][weekIndex] !== undefined
               ) {
@@ -277,149 +363,122 @@ const ChargeDisplay = () => {
             }
           }
 
-          monthlyDataCalc.push({
-            month: monthObj.month,
-            total: parseFloat(total.toFixed(2)),
-          });
-        }
-        setMonthlyData(monthlyDataCalc);
-
-        // 4. Distribution des charges par Work Package et par mois - excluant les WPs de synthèse dans les calculs
-        let wpMonthlyDataCalc = [];
-
-        // D'abord calculer pour les sous-WPs
-        for (let wp of allWorkPackages) {
-          let wpRow = { workPackage: wp };
-
-          for (let monthObj of months) {
-            let total = 0;
-
-            // Pour chaque mois, utiliser les 4 semaines correspondantes
-            for (let weekOffset = 0; weekOffset < 4; weekOffset++) {
-              const weekIndex = monthObj.column + weekOffset;
-
-              for (let i = 3; i < data.length; i++) {
-                if (
-                  data[i] &&
-                  data[i][0] === wp &&
-                  data[i][weekIndex] !== null &&
-                  data[i][weekIndex] !== undefined
-                ) {
-                  total += data[i][weekIndex];
-                }
-              }
-            }
-
-            wpRow[monthObj.month] = parseFloat(total.toFixed(2));
-          }
-
-          wpMonthlyDataCalc.push(wpRow);
+          wpRow[monthObj.month] = parseFloat(total.toFixed(2));
         }
 
-        // Ensuite calculer les totaux pour les WPs de synthèse
-        for (let mainWP of summaryWPs) {
-          const wpNumber = mainWP.replace("WP", "");
-          const subWPs = allWorkPackages.filter((wp) =>
-            wp.startsWith(wpNumber + ".")
-          );
+        wpMonthlyDataCalc.push(wpRow);
+      }
 
-          let wpRow = { workPackage: mainWP };
+      // Ensuite calculer les totaux pour les WPs de synthèse
+      for (let mainWP of summaryWPs) {
+        const wpNumber = mainWP.replace("WP", "");
+        const subWPs = allWorkPackages.filter((wp) =>
+          wp.startsWith(wpNumber + ".")
+        );
 
-          for (let monthObj of months) {
-            let total = 0;
+        let wpRow = { workPackage: mainWP };
 
-            // Additionner les valeurs des sous-WPs pour ce mois
-            subWPs.forEach((subWP) => {
-              const subWPData = wpMonthlyDataCalc.find(
-                (data) => data.workPackage === subWP
-              );
-              if (subWPData && subWPData[monthObj.month]) {
-                total += subWPData[monthObj.month];
-              }
-            });
-
-            wpRow[monthObj.month] = parseFloat(total.toFixed(2));
-          }
-
-          wpMonthlyDataCalc.push(wpRow);
-        }
-
-        setWpMonthlyData(wpMonthlyDataCalc);
-
-        // 5. Hiérarchie des Work Packages
-        let wpHierarchyCalc = {};
-
-        for (let wp of workPackages) {
-          if (summaryWPs.includes(wp)) {
-            wpHierarchyCalc[wp] = {
-              main: wp,
-              subWPs: [],
-            };
-          } else {
-            const wpNumber = wp.split(".")[0];
-            const mainWP = "WP" + wpNumber;
-            if (wpHierarchyCalc[mainWP]) {
-              wpHierarchyCalc[mainWP].subWPs.push(wp);
-            }
-          }
-        }
-        setWpHierarchy(wpHierarchyCalc);
-        setActiveWP(summaryWPs[0]);
-
-        // 6. Charge hebdomadaire - sans inclure les lignes de synthèse
-        let weeklyDataCalc = [];
-        for (let week = 38; week < 178; week++) {
-          let weekNumber = week - 37;
+        for (let monthObj of months) {
           let total = 0;
 
-          for (let i = 3; i < data.length; i++) {
-            if (
-              data[i] &&
-              !summaryWPs.includes(data[i][0]) &&
-              data[i][week] !== null &&
-              data[i][week] !== undefined
-            ) {
-              total += data[i][week];
+          // Additionner les valeurs des sous-WPs pour ce mois
+          subWPs.forEach((subWP) => {
+            const subWPData = wpMonthlyDataCalc.find(
+              (data) => data.workPackage === subWP
+            );
+            if (subWPData && subWPData[monthObj.month]) {
+              total += subWPData[monthObj.month];
             }
-          }
-
-          weeklyDataCalc.push({
-            week: weekNumber,
-            total: parseFloat(total.toFixed(2)),
           });
-        }
-        setWeeklyData(weeklyDataCalc);
 
-        // 7. Totaux généraux - sans inclure les lignes de synthèse
-        let totalSetup = 0;
-        let totalMonitor = 0;
-        let totalRun = 0;
+          wpRow[monthObj.month] = parseFloat(total.toFixed(2));
+        }
+
+        wpMonthlyDataCalc.push(wpRow);
+      }
+
+      setWpMonthlyData(wpMonthlyDataCalc);
+
+      // 5. Hiérarchie des Work Packages
+      let wpHierarchyCalc = {};
+
+      for (let wp of workPackages) {
+        if (summaryWPs.includes(wp)) {
+          wpHierarchyCalc[wp] = {
+            main: wp,
+            subWPs: [],
+          };
+        } else {
+          const wpNumber = wp.split(".")[0];
+          const mainWP = "WP" + wpNumber;
+          if (wpHierarchyCalc[mainWP]) {
+            wpHierarchyCalc[mainWP].subWPs.push(wp);
+          }
+        }
+      }
+      setWpHierarchy(wpHierarchyCalc);
+      setActiveWP(summaryWPs[0]);
+
+      // 6. Charge hebdomadaire - sans inclure les lignes de synthèse
+      let weeklyDataCalc = [];
+      for (let week = 38; week < 178; week++) {
+        let weekNumber = week - 37;
+        let total = 0;
 
         for (let i = 3; i < data.length; i++) {
-          if (data[i] && !summaryWPs.includes(data[i][0])) {
-            if (data[i][2]) totalSetup += data[i][2];
-            if (data[i][3]) totalMonitor += data[i][3];
-            if (data[i][4]) totalRun += data[i][4];
+          if (
+            data[i] &&
+            !summaryWPs.includes(data[i][0]) &&
+            data[i][week] !== null &&
+            data[i][week] !== undefined
+          ) {
+            total += data[i][week];
           }
         }
 
-        setTotals({
-          totalSetup: parseFloat(totalSetup.toFixed(2)),
-          totalMonitor: parseFloat(totalMonitor.toFixed(2)),
-          totalRun: parseFloat(totalRun.toFixed(2)),
-          grandTotal: parseFloat(
-            (totalSetup + totalMonitor + totalRun).toFixed(2)
-          ),
+        weeklyDataCalc.push({
+          week: weekNumber,
+          total: parseFloat(total.toFixed(2)),
         });
-
-        setIsLoading(false);
-      } catch (error) {
-        console.error("Erreur lors du chargement des données:", error);
-        setIsLoading(false);
       }
-    };
+      setWeeklyData(weeklyDataCalc);
 
-    loadData();
+      // 7. Totaux généraux - sans inclure les lignes de synthèse
+      let totalSetup = 0;
+      let totalMonitor = 0;
+      let totalRun = 0;
+
+      for (let i = 3; i < data.length; i++) {
+        if (data[i] && !summaryWPs.includes(data[i][0])) {
+          if (data[i][2]) totalSetup += data[i][2];
+          if (data[i][3]) totalMonitor += data[i][3];
+          if (data[i][4]) totalRun += data[i][4];
+        }
+      }
+
+      setTotals({
+        totalSetup: parseFloat(totalSetup.toFixed(2)),
+        totalMonitor: parseFloat(totalMonitor.toFixed(2)),
+        totalRun: parseFloat(totalRun.toFixed(2)),
+        grandTotal: parseFloat(
+          (totalSetup + totalMonitor + totalRun).toFixed(2)
+        ),
+      });
+
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Erreur lors du traitement des données Excel:", error);
+      setFileError(
+        `Erreur lors du traitement des données Excel: ${error.message}`
+      );
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Au lieu de charger automatiquement, nous attendons que l'utilisateur
+    // télécharge le fichier
+    setIsLoading(false);
   }, []);
 
   // Format des nombres
@@ -496,6 +555,48 @@ const ChargeDisplay = () => {
       return monthData;
     });
   };
+
+  // Si aucun fichier n'a été chargé, afficher l'interface de téléchargement
+  if (!fileInput && !isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen p-6">
+        <h1 className="text-2xl font-bold mb-6 text-center">
+          Dashboard de charge de travail
+        </h1>
+        <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
+          <h2 className="text-xl font-semibold mb-4">
+            Veuillez télécharger votre fichier Excel
+          </h2>
+          <p className="mb-6 text-gray-600">
+            Pour visualiser le dashboard, veuillez télécharger votre fichier
+            AL_Charge.xlsx
+          </p>
+
+          <div className="flex flex-col items-center">
+            <label
+              htmlFor="excel-upload"
+              className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded cursor-pointer mb-4 w-full text-center"
+            >
+              Sélectionner un fichier Excel
+            </label>
+            <input
+              id="excel-upload"
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+
+            {fileError && (
+              <div className="mt-4 p-3 bg-red-100 text-red-700 rounded-md w-full">
+                {fileError}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -637,11 +738,11 @@ const ChargeDisplay = () => {
               </h3>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart
-                  data={_.orderBy(
+                  data={orderBy(
                     workPackageData.filter((wp) =>
                       mainWPs.includes(wp.workPackage)
                     ),
-                    ["total"],
+                    "total",
                     ["desc"]
                   )}
                   margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
@@ -694,7 +795,7 @@ const ChargeDisplay = () => {
               <h3 className="text-lg font-medium mb-4">Top Rôles par charge</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart
-                  data={_.orderBy(roleData, ["total"], ["desc"]).slice(0, 5)}
+                  data={orderBy(roleData, "total", ["desc"]).slice(0, 5)}
                   margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
@@ -892,7 +993,7 @@ const ChargeDisplay = () => {
               </h3>
               <ResponsiveContainer width="100%" height={400}>
                 <BarChart
-                  data={_.orderBy(roleData, ["total"], ["desc"])}
+                  data={orderBy(roleData, "total", ["desc"])}
                   margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                   layout="vertical"
                 >
@@ -977,7 +1078,7 @@ const ChargeDisplay = () => {
               Top 3 rôles par rapport à la charge totale
             </h3>
             <div className="grid grid-cols-3 gap-4">
-              {_.orderBy(roleData, ["total"], ["desc"])
+              {orderBy(roleData, "total", ["desc"])
                 .slice(0, 3)
                 .map((role, index) => (
                   <div key={index} className="bg-gray-50 p-4 rounded-lg">
