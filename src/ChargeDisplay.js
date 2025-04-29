@@ -18,34 +18,36 @@ import {
   ComposedChart,
 } from "recharts";
 import * as XLSX from "xlsx";
-// Removed lodash import
 
+// BearingPoint brand colors
 const COLORS = [
-  "#0088FE",
-  "#00C49F",
+  "#0076C8", // BearingPoint blue
+  "#86BC25", // BearingPoint green
+  "#FFBB28", // Amber
+  "#FF8042", // Orange
+  "#575756", // Gray
+  "#003366", // Dark Blue
+  "#E1F0FA", // Light Blue
+  "#8884d8",
+  "#82ca9d",
+  "#ffc658",
+  "#8dd1e1",
+];
+const COLORS_SETUP = "#0076C8";    // BearingPoint blue
+const COLORS_MONITOR = "#86BC25";  // BearingPoint green
+const COLORS_RUN = "#FFBB28";      // Amber
+const COLORS_FTE = "#FF7300";      // Orange for FTE line
+
+const COLORS_MONTHS = [
+  "#0076C8",
+  "#E1F0FA",
+  "#003366",
+  "#86BC25",
+  "#E5F2D3",
+  "#575756",
+  "#F2F2F2",
   "#FFBB28",
   "#FF8042",
-  "#8884d8",
-  "#82ca9d",
-  "#ffc658",
-  "#8dd1e1",
-  "#a4de6c",
-  "#d0ed57",
-  "#83a6ed",
-];
-const COLORS_SETUP = "#0088FE";
-const COLORS_MONITOR = "#00C49F";
-const COLORS_RUN = "#FFBB28";
-const COLORS_MONTHS = [
-  "#8884d8",
-  "#83a6ed",
-  "#8dd1e1",
-  "#82ca9d",
-  "#a4de6c",
-  "#d0ed57",
-  "#ffc658",
-  "#FF8042",
-  "#ff7f50",
   "#da70d6",
   "#9370db",
   "#8a2be2",
@@ -137,6 +139,11 @@ const ChargeDisplay = () => {
         defval: null,
       });
 
+      // Important: The first two rows are headers, so we need to start processing from row 3
+      // This means we need to adjust our index from i=3 (which we had before) to i=2 (0-based index for the 3rd row)
+      const HEADER_ROWS = 2; // Number of header rows to skip
+      const DATA_START_ROW = HEADER_ROWS; // Data starts right after the header rows (0-based index)
+
       // Identifier les Work Packages et rôles
       const allWorkPackages = [
         "1.1 Program Charter",
@@ -205,20 +212,20 @@ const ChargeDisplay = () => {
         "Change Expert",
       ];
 
-      // Mois disponibles
+      // Mois disponibles with years included
       const months = [
-        { month: "Jun", column: 42 },
-        { month: "Jul", column: 47 },
-        { month: "Aug", column: 52 },
-        { month: "Sep", column: 57 },
-        { month: "Oct", column: 62 },
-        { month: "Nov", column: 67 },
-        { month: "Dec", column: 72 },
-        { month: "Jan", column: 77 },
-        { month: "Feb", column: 82 },
-        { month: "Mar", column: 87 },
-        { month: "Apr", column: 92 },
-        { month: "May", column: 97 },
+        { month: "Jun 2025", column: 42 },
+        { month: "Jul 2025", column: 47 },
+        { month: "Aug 2025", column: 52 },
+        { month: "Sep 2025", column: 57 },
+        { month: "Oct 2025", column: 62 },
+        { month: "Nov 2025", column: 67 },
+        { month: "Dec 2025", column: 72 },
+        { month: "Jan 2026", column: 77 },
+        { month: "Feb 2026", column: 82 },
+        { month: "Mar 2026", column: 87 },
+        { month: "Apr 2026", column: 92 },
+        { month: "May 2026", column: 97 },
       ];
 
       // 1. Calculer la charge totale par WP (uniquement les sous-WPs, pas les WPs de synthèse)
@@ -230,7 +237,8 @@ const ChargeDisplay = () => {
         let monitor = 0;
         let run = 0;
 
-        for (let i = 3; i < data.length; i++) {
+        // Start from DATA_START_ROW instead of hardcoded index 3
+        for (let i = DATA_START_ROW; i < data.length; i++) {
           if (data[i] && data[i][0] === wp) {
             if (data[i][2]) setup += data[i][2];
             if (data[i][3]) monitor += data[i][3];
@@ -285,7 +293,8 @@ const ChargeDisplay = () => {
         let monitor = 0;
         let run = 0;
 
-        for (let i = 3; i < data.length; i++) {
+        // Start from DATA_START_ROW instead of hardcoded index 3
+        for (let i = DATA_START_ROW; i < data.length; i++) {
           // Exclure les lignes de synthèse
           if (
             data[i] &&
@@ -312,12 +321,15 @@ const ChargeDisplay = () => {
       let monthlyDataCalc = [];
       for (let monthObj of months) {
         let total = 0;
+        let weekCount = 0;
 
         // Pour chaque mois, utiliser les 4 semaines correspondantes
         for (let weekOffset = 0; weekOffset < 4; weekOffset++) {
           const weekIndex = monthObj.column + weekOffset;
-
-          for (let i = 3; i < data.length; i++) {
+          let weekTotal = 0;
+          
+          // Start from DATA_START_ROW instead of hardcoded index 3
+          for (let i = DATA_START_ROW; i < data.length; i++) {
             // Ne prendre en compte que les lignes qui ne sont pas des WPs de synthèse
             if (
               data[i] &&
@@ -325,14 +337,25 @@ const ChargeDisplay = () => {
               data[i][weekIndex] !== null &&
               data[i][weekIndex] !== undefined
             ) {
-              total += data[i][weekIndex];
+              weekTotal += data[i][weekIndex];
             }
           }
+          
+          if (weekTotal > 0) {
+            total += weekTotal;
+            weekCount++;
+          }
         }
+
+        // Calculate average FTE for the month
+        // If we have data for this month
+        const avgWeeklyCharge = weekCount > 0 ? total / weekCount : 0;
+        const ftePercentage = (avgWeeklyCharge / 5) * 100; // 5 days per week for 100% FTE
 
         monthlyDataCalc.push({
           month: monthObj.month,
           total: parseFloat(total.toFixed(2)),
+          ftePercentage: parseFloat(ftePercentage.toFixed(1))
         });
       }
       setMonthlyData(monthlyDataCalc);
@@ -351,7 +374,8 @@ const ChargeDisplay = () => {
           for (let weekOffset = 0; weekOffset < 4; weekOffset++) {
             const weekIndex = monthObj.column + weekOffset;
 
-            for (let i = 3; i < data.length; i++) {
+            // Start from DATA_START_ROW instead of hardcoded index 3
+            for (let i = DATA_START_ROW; i < data.length; i++) {
               if (
                 data[i] &&
                 data[i][0] === wp &&
@@ -425,7 +449,8 @@ const ChargeDisplay = () => {
         let weekNumber = week - 37;
         let total = 0;
 
-        for (let i = 3; i < data.length; i++) {
+        // Start from DATA_START_ROW instead of hardcoded index 3
+        for (let i = DATA_START_ROW; i < data.length; i++) {
           if (
             data[i] &&
             !summaryWPs.includes(data[i][0]) &&
@@ -439,6 +464,8 @@ const ChargeDisplay = () => {
         weeklyDataCalc.push({
           week: weekNumber,
           total: parseFloat(total.toFixed(2)),
+          // Add FTE percentage
+          ftePercentage: parseFloat(((total / 5) * 100).toFixed(1))
         });
       }
       setWeeklyData(weeklyDataCalc);
@@ -448,7 +475,8 @@ const ChargeDisplay = () => {
       let totalMonitor = 0;
       let totalRun = 0;
 
-      for (let i = 3; i < data.length; i++) {
+      // Start from DATA_START_ROW instead of hardcoded index 3
+      for (let i = DATA_START_ROW; i < data.length; i++) {
         if (data[i] && !summaryWPs.includes(data[i][0])) {
           if (data[i][2]) totalSetup += data[i][2];
           if (data[i][3]) totalMonitor += data[i][3];
@@ -502,21 +530,22 @@ const ChargeDisplay = () => {
     const mainWpData = wpMonthlyData.find((wp) => wp.workPackage === mainWP);
     if (!mainWpData) return [];
 
-    const months = [
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
+    const monthsWithYears = [
+      "Jun 2025",
+      "Jul 2025",
+      "Aug 2025",
+      "Sep 2025",
+      "Oct 2025",
+      "Nov 2025",
+      "Dec 2025",
+      "Jan 2026",
+      "Feb 2026",
+      "Mar 2026",
+      "Apr 2026",
+      "May 2026",
     ];
-    return months.map((month) => ({
+    
+    return monthsWithYears.map((month) => ({
       month,
       charge: mainWpData[month] || 0,
     }));
@@ -527,22 +556,22 @@ const ChargeDisplay = () => {
     if (!wpHierarchy[mainWP]) return [];
 
     const allWps = [mainWP, ...wpHierarchy[mainWP].subWPs];
-    const months = [
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
+    const monthsWithYears = [
+      "Jun 2025",
+      "Jul 2025",
+      "Aug 2025",
+      "Sep 2025",
+      "Oct 2025",
+      "Nov 2025",
+      "Dec 2025",
+      "Jan 2026",
+      "Feb 2026",
+      "Mar 2026",
+      "Apr 2026",
+      "May 2026",
     ];
 
-    return months.map((month) => {
+    return monthsWithYears.map((month) => {
       const monthData = { month };
 
       allWps.forEach((wp) => {
@@ -560,14 +589,10 @@ const ChargeDisplay = () => {
   if (!fileInput && !isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen p-6">
-        <h1 className="text-2xl font-bold mb-6 text-center">
-          Dashboard de charge de travail
-        </h1>
-        <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-          <h2 className="text-xl font-semibold mb-4">
-            Veuillez télécharger votre fichier Excel
-          </h2>
-          <p className="mb-6 text-gray-600">
+        <h1>Dashboard de charge de travail</h1>
+        <div className="chart-container" style={{maxWidth: "400px"}}>
+          <h2>Veuillez télécharger votre fichier Excel</h2>
+          <p style={{marginBottom: "20px", color: "#666"}}>
             Pour visualiser le dashboard, veuillez télécharger votre fichier
             AL_Charge.xlsx
           </p>
@@ -575,7 +600,8 @@ const ChargeDisplay = () => {
           <div className="flex flex-col items-center">
             <label
               htmlFor="excel-upload"
-              className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded cursor-pointer mb-4 w-full text-center"
+              className="wp-button active"
+              style={{width: "100%", textAlign: "center", marginBottom: "16px", cursor: "pointer"}}
             >
               Sélectionner un fichier Excel
             </label>
@@ -584,11 +610,18 @@ const ChargeDisplay = () => {
               type="file"
               accept=".xlsx,.xls"
               onChange={handleFileUpload}
-              className="hidden"
+              style={{display: "none"}}
             />
 
             {fileError && (
-              <div className="mt-4 p-3 bg-red-100 text-red-700 rounded-md w-full">
+              <div style={{
+                marginTop: "16px", 
+                padding: "12px", 
+                backgroundColor: "#ffebee", 
+                color: "#c62828",
+                borderRadius: "4px",
+                width: "100%"
+              }}>
                 {fileError}
               </div>
             )}
@@ -607,86 +640,60 @@ const ChargeDisplay = () => {
   }
 
   return (
-    <div className="p-6 font-sans">
-      <h1 className="text-2xl font-bold mb-6 text-center">
-        Dashboard de charge de travail
-      </h1>
+    <div style={{padding: "20px"}}>
+      <h1>Dashboard de charge de travail</h1>
 
       {/* Statistiques globales */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="bg-blue-50 p-4 rounded-lg shadow">
-          <h3 className="text-lg font-medium text-blue-800">Charge totale</h3>
-          <p className="text-3xl font-bold">
-            {formatNumber(totals.grandTotal)} j/h
-          </p>
+      <div className="stats-container">
+        <div className="stat-card total">
+          <h3>Charge totale</h3>
+          <div className="value">{formatNumber(totals.grandTotal)} j/h</div>
         </div>
-        <div className="bg-green-50 p-4 rounded-lg shadow">
-          <h3 className="text-lg font-medium text-green-800">Setup</h3>
-          <p className="text-3xl font-bold">
-            {formatNumber(totals.totalSetup)} j/h
-          </p>
-          <p className="text-sm text-green-600">
+        <div className="stat-card setup">
+          <h3>Setup</h3>
+          <div className="value">{formatNumber(totals.totalSetup)} j/h</div>
+          <div className="percentage">
             ({((totals.totalSetup / totals.grandTotal) * 100).toFixed(1)}%)
-          </p>
+          </div>
         </div>
-        <div className="bg-yellow-50 p-4 rounded-lg shadow">
-          <h3 className="text-lg font-medium text-yellow-800">Monitor</h3>
-          <p className="text-3xl font-bold">
-            {formatNumber(totals.totalMonitor)} j/h
-          </p>
-          <p className="text-sm text-yellow-600">
+        <div className="stat-card monitor">
+          <h3>Monitor</h3>
+          <div className="value">{formatNumber(totals.totalMonitor)} j/h</div>
+          <div className="percentage">
             ({((totals.totalMonitor / totals.grandTotal) * 100).toFixed(1)}%)
-          </p>
+          </div>
         </div>
-        <div className="bg-orange-50 p-4 rounded-lg shadow">
-          <h3 className="text-lg font-medium text-orange-800">Run</h3>
-          <p className="text-3xl font-bold">
-            {formatNumber(totals.totalRun)} j/h
-          </p>
-          <p className="text-sm text-orange-600">
+        <div className="stat-card run">
+          <h3>Run</h3>
+          <div className="value">{formatNumber(totals.totalRun)} j/h</div>
+          <div className="percentage">
             ({((totals.totalRun / totals.grandTotal) * 100).toFixed(1)}%)
-          </p>
+          </div>
         </div>
       </div>
 
       {/* Onglets de navigation */}
-      <div className="flex border-b mb-6">
+      <div className="tabs">
         <button
-          className={`py-2 px-4 ${
-            activeTab === "overview"
-              ? "border-b-2 border-blue-500 font-medium"
-              : "text-gray-500"
-          }`}
+          className={`tab ${activeTab === "overview" ? "active" : ""}`}
           onClick={() => setActiveTab("overview")}
         >
           Vue d'ensemble
         </button>
         <button
-          className={`py-2 px-4 ${
-            activeTab === "wp"
-              ? "border-b-2 border-blue-500 font-medium"
-              : "text-gray-500"
-          }`}
+          className={`tab ${activeTab === "wp" ? "active" : ""}`}
           onClick={() => setActiveTab("wp")}
         >
           Work Packages
         </button>
         <button
-          className={`py-2 px-4 ${
-            activeTab === "roles"
-              ? "border-b-2 border-blue-500 font-medium"
-              : "text-gray-500"
-          }`}
+          className={`tab ${activeTab === "roles" ? "active" : ""}`}
           onClick={() => setActiveTab("roles")}
         >
           Rôles
         </button>
         <button
-          className={`py-2 px-4 ${
-            activeTab === "timeline"
-              ? "border-b-2 border-blue-500 font-medium"
-              : "text-gray-500"
-          }`}
+          className={`tab ${activeTab === "timeline" ? "active" : ""}`}
           onClick={() => setActiveTab("timeline")}
         >
           Évolution temporelle
@@ -696,12 +703,10 @@ const ChargeDisplay = () => {
       {/* Contenu des onglets */}
       {activeTab === "overview" && (
         <div>
-          <div className="grid grid-cols-2 gap-6 mb-8">
+          <div className="charts-row">
             {/* Répartition globale par type d'activité */}
-            <div className="bg-white p-4 rounded-lg shadow">
-              <h3 className="text-lg font-medium mb-4">
-                Répartition par type d'activité
-              </h3>
+            <div className="chart-container">
+              <h2>Répartition par type d'activité</h2>
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
                   <Pie
@@ -732,10 +737,8 @@ const ChargeDisplay = () => {
             </div>
 
             {/* Top 5 des Work Packages par charge totale */}
-            <div className="bg-white p-4 rounded-lg shadow">
-              <h3 className="text-lg font-medium mb-4">
-                Top Work Packages principaux par charge
-              </h3>
+            <div className="chart-container">
+              <h2>Top Work Packages principaux par charge</h2>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart
                   data={orderBy(
@@ -762,37 +765,67 @@ const ChargeDisplay = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-6">
+          <div className="charts-row">
             {/* Distribution mensuelle de la charge */}
-            <div className="bg-white p-4 rounded-lg shadow">
-              <h3 className="text-lg font-medium mb-4">
-                Distribution mensuelle de la charge
-              </h3>
+            <div className="chart-container">
+              <h2>Distribution mensuelle de la charge</h2>
               <ResponsiveContainer width="100%" height={300}>
-                <AreaChart
+                <ComposedChart
                   data={monthlyData}
                   margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis tickFormatter={(value) => formatNumber(value)} />
-                  <Tooltip
-                    formatter={(value) => formatNumber(value) + " j/h"}
+                  <XAxis 
+                    dataKey="month" 
+                    angle={-45} 
+                    textAnchor="end" 
+                    height={80} 
+                    padding={{ left: 5, right: 5 }}
                   />
+                  <YAxis 
+                    yAxisId="left" 
+                    tickFormatter={(value) => formatNumber(value)} 
+                    label={{ value: 'Charge (j/h)', angle: -90, position: 'insideLeft' }} 
+                  />
+                  <YAxis 
+                    yAxisId="right" 
+                    orientation="right" 
+                    domain={[0, 100]} 
+                    tickFormatter={(value) => `${value}%`}
+                    label={{ value: 'FTE Moyen (%)', angle: 90, position: 'insideRight' }} 
+                  />
+                  <Tooltip
+                    formatter={(value, name) => {
+                      if (name === "Charge totale") return formatNumber(value) + " j/h";
+                      if (name === "FTE Moyen") return value + "%";
+                      return value;
+                    }}
+                  />
+                  <Legend />
                   <Area
+                    yAxisId="left"
                     type="monotone"
                     dataKey="total"
                     name="Charge totale"
                     fill="#8884d8"
                     stroke="#8884d8"
+                    fillOpacity={0.6}
                   />
-                </AreaChart>
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="ftePercentage"
+                    name="FTE Moyen"
+                    stroke={COLORS_FTE}
+                    strokeWidth={2}
+                  />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
 
             {/* Top 5 des rôles par charge totale */}
-            <div className="bg-white p-4 rounded-lg shadow">
-              <h3 className="text-lg font-medium mb-4">Top Rôles par charge</h3>
+            <div className="chart-container">
+              <h2>Top Rôles par charge</h2>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart
                   data={orderBy(roleData, "total", ["desc"]).slice(0, 5)}
@@ -813,28 +846,55 @@ const ChargeDisplay = () => {
             </div>
           </div>
 
-          {/* Courbe de charge hebdomadaire */}
-          <div className="bg-white p-4 rounded-lg shadow mt-6">
-            <h3 className="text-lg font-medium mb-4">
-              Évolution de la charge hebdomadaire
-            </h3>
+          {/* Courbe de charge hebdomadaire avec FTE */}
+          <div className="chart-container">
+            <h2>Évolution de la charge hebdomadaire</h2>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart
+              <ComposedChart
                 data={weeklyData}
                 margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="week" />
-                <YAxis tickFormatter={(value) => formatNumber(value)} />
-                <Tooltip formatter={(value) => formatNumber(value) + " j/h"} />
-                <Line
+                <YAxis 
+                  yAxisId="left" 
+                  tickFormatter={(value) => formatNumber(value)} 
+                  label={{ value: 'Charge (j/h)', angle: -90, position: 'insideLeft' }} 
+                />
+                <YAxis 
+                  yAxisId="right" 
+                  orientation="right" 
+                  domain={[0, 100]} 
+                  tickFormatter={(value) => `${value}%`}
+                  label={{ value: 'FTE (%)', angle: 90, position: 'insideRight' }} 
+                />
+                <Tooltip 
+                  formatter={(value, name) => {
+                    if (name === "Charge hebdomadaire") return formatNumber(value) + " j/h";
+                    if (name === "FTE") return value + "%";
+                    return value;
+                  }}
+                />
+                <Legend />
+                <Area
+                  yAxisId="left"
                   type="monotone"
                   dataKey="total"
                   name="Charge hebdomadaire"
+                  fill="#8884d8"
                   stroke="#8884d8"
-                  dot={false}
+                  fillOpacity={0.6}
                 />
-              </LineChart>
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="ftePercentage"
+                  name="FTE"
+                  stroke={COLORS_FTE}
+                  dot={false}
+                  strokeWidth={2}
+                />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         </div>
@@ -843,13 +903,11 @@ const ChargeDisplay = () => {
       {activeTab === "wp" && (
         <div>
           {/* Sélection du Work Package */}
-          <div className="flex mb-6 space-x-2 overflow-x-auto pb-2">
+          <div className="wp-selector">
             {mainWPs.map((wp) => (
               <button
                 key={wp}
-                className={`px-3 py-1 rounded ${
-                  activeWP === wp ? "bg-blue-500 text-white" : "bg-gray-200"
-                }`}
+                className={`wp-button ${activeWP === wp ? "active" : ""}`}
                 onClick={() => setActiveWP(wp)}
               >
                 {wp}
@@ -857,12 +915,10 @@ const ChargeDisplay = () => {
             ))}
           </div>
 
-          <div className="grid grid-cols-2 gap-6 mb-6">
+          <div className="charts-row">
             {/* Détails du Work Package sélectionné */}
-            <div className="bg-white p-4 rounded-lg shadow">
-              <h3 className="text-lg font-medium mb-4">
-                {activeWP} - Répartition par type
-              </h3>
+            <div className="chart-container">
+              <h2>{activeWP} - Répartition par type</h2>
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
                   <Pie
@@ -896,17 +952,20 @@ const ChargeDisplay = () => {
             </div>
 
             {/* Évolution mensuelle du WP */}
-            <div className="bg-white p-4 rounded-lg shadow">
-              <h3 className="text-lg font-medium mb-4">
-                {activeWP} - Évolution mensuelle
-              </h3>
+            <div className="chart-container">
+              <h2>{activeWP} - Évolution mensuelle</h2>
               <ResponsiveContainer width="100%" height={300}>
                 <AreaChart
                   data={getWpMonthlyChartData(activeWP)}
                   margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
+                  <XAxis 
+                    dataKey="month" 
+                    angle={-45} 
+                    textAnchor="end" 
+                    height={80} 
+                  />
                   <YAxis tickFormatter={(value) => formatNumber(value)} />
                   <Tooltip
                     formatter={(value) => formatNumber(value) + " j/h"}
@@ -924,10 +983,8 @@ const ChargeDisplay = () => {
           </div>
 
           {/* Sous-Work Packages */}
-          <div className="bg-white p-4 rounded-lg shadow mb-6">
-            <h3 className="text-lg font-medium mb-4">
-              {activeWP} - Sous-Work Packages
-            </h3>
+          <div className="chart-container">
+            <h2>{activeWP} - Sous-Work Packages</h2>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart
                 data={getSubWPsData(activeWP)}
@@ -946,17 +1003,20 @@ const ChargeDisplay = () => {
           </div>
 
           {/* Évolution détaillée par mois pour le WP et ses sous-WPs */}
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-medium mb-4">
-              {activeWP} - Évolution détaillée par sous-WP
-            </h3>
+          <div className="chart-container">
+            <h2>{activeWP} - Évolution détaillée par sous-WP</h2>
             <ResponsiveContainer width="100%" height={400}>
               <ComposedChart
                 data={getWpDetailedMonthlyData(activeWP)}
                 margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
+                <XAxis 
+                  dataKey="month" 
+                  angle={-45} 
+                  textAnchor="end" 
+                  height={80} 
+                />
                 <YAxis tickFormatter={(value) => formatNumber(value)} />
                 <Tooltip formatter={(value) => formatNumber(value) + " j/h"} />
                 <Legend />
@@ -985,12 +1045,10 @@ const ChargeDisplay = () => {
 
       {activeTab === "roles" && (
         <div>
-          <div className="grid grid-cols-2 gap-6 mb-6">
+          <div className="charts-row">
             {/* Charge totale par rôle */}
-            <div className="bg-white p-4 rounded-lg shadow">
-              <h3 className="text-lg font-medium mb-4">
-                Charge totale par rôle
-              </h3>
+            <div className="chart-container">
+              <h2>Charge totale par rôle</h2>
               <ResponsiveContainer width="100%" height={400}>
                 <BarChart
                   data={orderBy(roleData, "total", ["desc"])}
@@ -1025,10 +1083,8 @@ const ChargeDisplay = () => {
             </div>
 
             {/* Répartition des activités par rôle (%) */}
-            <div className="bg-white p-4 rounded-lg shadow">
-              <h3 className="text-lg font-medium mb-4">
-                Répartition des activités par rôle (%)
-              </h3>
+            <div className="chart-container">
+              <h2>Répartition des activités par rôle (%)</h2>
               <ResponsiveContainer width="100%" height={400}>
                 <BarChart
                   data={roleData.map((role) => ({
@@ -1072,40 +1128,38 @@ const ChargeDisplay = () => {
             </div>
           </div>
 
-          {/* Top 3 des Work Packages par rôle */}
-          <div className="bg-white p-4 rounded-lg shadow mb-6">
-            <h3 className="text-lg font-medium mb-4">
-              Top 3 rôles par rapport à la charge totale
-            </h3>
-            <div className="grid grid-cols-3 gap-4">
+          {/* Top 3 des rôles by charge */}
+          <div className="chart-container">
+            <h2>Top 3 rôles par rapport à la charge totale</h2>
+            <div style={{display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "16px"}}>
               {orderBy(roleData, "total", ["desc"])
                 .slice(0, 3)
                 .map((role, index) => (
-                  <div key={index} className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="font-medium text-lg mb-2">{role.role}</h4>
-                    <p className="text-2xl font-bold">
+                  <div key={index} style={{backgroundColor: "#f5f5f5", padding: "16px", borderRadius: "8px"}}>
+                    <h4 style={{fontWeight: "600", fontSize: "18px", marginBottom: "8px"}}>{role.role}</h4>
+                    <p style={{fontSize: "22px", fontWeight: "bold"}}>
                       {formatNumber(role.total)} j/h
                     </p>
-                    <p className="text-sm text-gray-600">
+                    <p style={{fontSize: "14px", color: "#666"}}>
                       {((role.total / totals.grandTotal) * 100).toFixed(1)}% de
                       la charge totale
                     </p>
-                    <div className="mt-2">
-                      <div className="flex justify-between text-sm">
+                    <div style={{marginTop: "10px"}}>
+                      <div style={{display: "flex", justifyContent: "space-between", fontSize: "14px"}}>
                         <span>Setup:</span>
                         <span>
                           {formatNumber(role.setup)} j/h (
                           {((role.setup / role.total) * 100).toFixed(1)}%)
                         </span>
                       </div>
-                      <div className="flex justify-between text-sm">
+                      <div style={{display: "flex", justifyContent: "space-between", fontSize: "14px"}}>
                         <span>Monitor:</span>
                         <span>
                           {formatNumber(role.monitor)} j/h (
                           {((role.monitor / role.total) * 100).toFixed(1)}%)
                         </span>
                       </div>
-                      <div className="flex justify-between text-sm">
+                      <div style={{display: "flex", justifyContent: "space-between", fontSize: "14px"}}>
                         <span>Run:</span>
                         <span>
                           {formatNumber(role.run)} j/h (
@@ -1122,61 +1176,118 @@ const ChargeDisplay = () => {
 
       {activeTab === "timeline" && (
         <div>
-          {/* Évolution mensuelle globale */}
-          <div className="bg-white p-4 rounded-lg shadow mb-6">
-            <h3 className="text-lg font-medium mb-4">
-              Évolution mensuelle de la charge globale
-            </h3>
+          {/* Évolution mensuelle globale avec années et FTE */}
+          <div className="chart-container">
+            <h2>Évolution mensuelle de la charge globale</h2>
             <ResponsiveContainer width="100%" height={300}>
-              <AreaChart
+              <ComposedChart
                 data={monthlyData}
                 margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis tickFormatter={(value) => formatNumber(value)} />
-                <Tooltip formatter={(value) => formatNumber(value) + " j/h"} />
+                <XAxis 
+                  dataKey="month" 
+                  angle={-45} 
+                  textAnchor="end" 
+                  height={80} 
+                  padding={{ left: 5, right: 5 }}
+                />
+                <YAxis 
+                  yAxisId="left" 
+                  tickFormatter={(value) => formatNumber(value)} 
+                  label={{ value: 'Charge (j/h)', angle: -90, position: 'insideLeft' }} 
+                />
+                <YAxis 
+                  yAxisId="right" 
+                  orientation="right" 
+                  domain={[0, 100]} 
+                  tickFormatter={(value) => `${value}%`}
+                  label={{ value: 'FTE Moyen (%)', angle: 90, position: 'insideRight' }} 
+                />
+                <Tooltip
+                  formatter={(value, name) => {
+                    if (name === "Charge totale") return formatNumber(value) + " j/h";
+                    if (name === "FTE Moyen") return value + "%";
+                    return value;
+                  }}
+                />
+                <Legend />
                 <Area
+                  yAxisId="left"
                   type="monotone"
                   dataKey="total"
                   name="Charge totale"
                   fill="#8884d8"
                   stroke="#8884d8"
+                  fillOpacity={0.6}
                 />
-              </AreaChart>
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="ftePercentage"
+                  name="FTE Moyen"
+                  stroke={COLORS_FTE}
+                  strokeWidth={2}
+                />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
 
-          {/* Évolution hebdomadaire */}
-          <div className="bg-white p-4 rounded-lg shadow mb-6">
-            <h3 className="text-lg font-medium mb-4">
-              Évolution hebdomadaire de la charge
-            </h3>
+          {/* Évolution hebdomadaire avec FTE */}
+          <div className="chart-container">
+            <h2>Évolution hebdomadaire de la charge</h2>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart
+              <ComposedChart
                 data={weeklyData}
                 margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="week" />
-                <YAxis tickFormatter={(value) => formatNumber(value)} />
-                <Tooltip formatter={(value) => formatNumber(value) + " j/h"} />
-                <Line
+                <YAxis 
+                  yAxisId="left" 
+                  tickFormatter={(value) => formatNumber(value)} 
+                  label={{ value: 'Charge (j/h)', angle: -90, position: 'insideLeft' }} 
+                />
+                <YAxis 
+                  yAxisId="right" 
+                  orientation="right" 
+                  domain={[0, 100]} 
+                  tickFormatter={(value) => `${value}%`}
+                  label={{ value: 'FTE (%)', angle: 90, position: 'insideRight' }} 
+                />
+                <Tooltip 
+                  formatter={(value, name) => {
+                    if (name === "Charge hebdomadaire") return formatNumber(value) + " j/h";
+                    if (name === "FTE") return value + "%";
+                    return value;
+                  }}
+                />
+                <Legend />
+                <Area
+                  yAxisId="left"
                   type="monotone"
                   dataKey="total"
-                  name="Charge"
+                  name="Charge hebdomadaire"
+                  fill="#8884d8"
                   stroke="#8884d8"
-                  dot={false}
+                  fillOpacity={0.6}
                 />
-              </LineChart>
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="ftePercentage"
+                  name="FTE"
+                  stroke={COLORS_FTE}
+                  dot={false}
+                  strokeWidth={2}
+                />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
 
           {/* Comparaison des WPs principaux dans le temps */}
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-medium mb-4">
-              Comparaison des Work Packages principaux dans le temps
-            </h3>
+          <div className="chart-container">
+            <h2>Comparaison des Work Packages principaux dans le temps</h2>
             <ResponsiveContainer width="100%" height={400}>
               <LineChart margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -1184,6 +1295,9 @@ const ChargeDisplay = () => {
                   dataKey="month"
                   type="category"
                   allowDuplicatedCategory={false}
+                  angle={-45} 
+                  textAnchor="end" 
+                  height={80}
                 />
                 <YAxis tickFormatter={(value) => formatNumber(value)} />
                 <Tooltip formatter={(value) => formatNumber(value) + " j/h"} />
